@@ -42,6 +42,7 @@ pub struct Tracker {
     pub hourly_rate: i64,
     pub state: TrackerState,
     pub created_at: String,
+    pub shortcut: Option<i64>,
 }
 
 #[cfg(test)]

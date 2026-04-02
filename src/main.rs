@@ -2,6 +2,7 @@ mod cli;
 mod db;
 mod domain;
 mod error;
+mod keybindings;
 mod waybar;
 
 use std::path::PathBuf;
@@ -12,6 +13,7 @@ use directories::ProjectDirs;
 use crate::cli::{Cli, Command, TrackerAction};
 use crate::db::connection::Database;
 use crate::db::session_repo::SessionRepo;
+use crate::db::tracker_repo::TrackerRepo;
 
 fn main() {
     if let Err(e) = run() {
@@ -31,6 +33,14 @@ fn run() -> error::Result<()> {
     let closed = session_repo.close_stale_sessions()?;
     if closed > 0 {
         eprintln!("Closed {closed} stale session(s) from previous days.");
+    }
+
+    // Auto-sync keybindings if bindings file doesn't exist (e.g. after migration)
+    if !keybindings::bindings_file_exists() {
+        let repo = TrackerRepo::new(&db);
+        if !repo.get_all()?.is_empty() {
+            keybindings::sync(&db)?;
+        }
     }
 
     match cli.command {
@@ -54,6 +64,7 @@ fn run() -> error::Result<()> {
                 color,
                 rate,
                 icon,
+                shortcut,
             } => cli::commands::tracker_edit(
                 &db,
                 name,
@@ -61,6 +72,7 @@ fn run() -> error::Result<()> {
                 color,
                 rate,
                 icon.map(|p| p.to_string_lossy().to_string()),
+                shortcut,
             ),
             TrackerAction::Delete { name } => cli::commands::tracker_delete(&db, name),
         },
@@ -68,6 +80,7 @@ fn run() -> error::Result<()> {
         Command::Pause => cli::commands::pause(&db),
         Command::Status => cli::commands::status(&db),
         Command::Waybar => cli::commands::waybar(&db),
+        Command::SyncKeybindings => cli::commands::sync_keybindings(&db),
     }
 }
 

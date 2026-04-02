@@ -117,6 +117,7 @@ mod tests {
             hourly_rate: 15000,
             state: TrackerState::Created,
             created_at: "2026-04-01T10:00:00".to_string(),
+            shortcut: None,
         })
         .unwrap()
     }

@@ -27,6 +27,8 @@ pub fn tracker_add(
         )));
     }
 
+    let shortcut = repo.next_available_shortcut()?;
+
     let now = chrono::Local::now()
         .format("%Y-%m-%dT%H:%M:%S")
         .to_string();
@@ -39,10 +41,25 @@ pub fn tracker_add(
         hourly_rate: rate,
         state: TrackerState::Created,
         created_at: now,
+        shortcut,
     };
 
     repo.create(&tracker)?;
-    println!("Tracker '{}' created.", name.green());
+
+    if let Some(s) = shortcut {
+        println!(
+            "Tracker '{}' created. Shortcut: SUPER ALT CTRL + {}",
+            name.green(),
+            s
+        );
+    } else {
+        println!(
+            "Tracker '{}' created. No shortcut available (max 9).",
+            name.green()
+        );
+    }
+
+    crate::keybindings::sync(db)?;
     Ok(())
 }
 
@@ -56,10 +73,10 @@ pub fn tracker_list(db: &Database) -> Result<()> {
     }
 
     println!(
-        " {:<15} {:<12} {:<10} {:<10}",
-        "Name", "Rate/hr", "Color", "State"
+        " {:<5} {:<15} {:<12} {:<10} {:<10}",
+        "Key", "Name", "Rate/hr", "Color", "State"
     );
-    println!("{}", "─".repeat(50));
+    println!("{}", "─".repeat(55));
 
     for t in &trackers {
         let state_display = match t.state {
@@ -67,8 +84,13 @@ pub fn tracker_list(db: &Database) -> Result<()> {
             TrackerState::Paused => t.state.to_string().yellow().to_string(),
             TrackerState::Created => t.state.to_string().dimmed().to_string(),
         };
+        let key_display = match t.shortcut {
+            Some(s) => format!("[{}]", s),
+            None => " - ".to_string(),
+        };
         println!(
-            " {:<15} {:<12} {:<10} {}",
+            " {:<5} {:<15} {:<12} {:<10} {}",
+            key_display,
             t.name,
             format_clp(t.hourly_rate),
             t.color,
@@ -85,11 +107,15 @@ pub fn tracker_edit(
     color: Option<String>,
     rate: Option<i64>,
     icon: Option<String>,
+    shortcut: Option<i64>,
 ) -> Result<()> {
     let repo = TrackerRepo::new(db);
     let mut tracker = repo
         .find_by_name(&name)?
         .ok_or_else(|| AppError::NotFound(format!("Tracker '{name}'")))?;
+
+    let name_changed = new_name.is_some();
+    let shortcut_changed = shortcut.is_some();
 
     if let Some(n) = new_name {
         tracker.name = n;
@@ -99,6 +125,17 @@ pub fn tracker_edit(
     }
     if let Some(r) = rate {
         validate_rate(r)?;
+    }
+    if let Some(s) = shortcut {
+        validate_shortcut(s)?;
+        // Check if shortcut is already taken by another tracker
+        let all = repo.get_all()?;
+        if let Some(other) = all.iter().find(|t| t.shortcut == Some(s) && t.id != tracker.id) {
+            return Err(AppError::Validation(format!(
+                "Shortcut {} is already assigned to '{}'.",
+                s, other.name
+            )));
+        }
     }
 
     if let Some(c) = color {
@@ -110,9 +147,17 @@ pub fn tracker_edit(
     if let Some(i) = icon {
         tracker.icon_path = Some(i);
     }
+    if let Some(s) = shortcut {
+        tracker.shortcut = Some(s);
+    }
 
     repo.update(&tracker)?;
     println!("Tracker '{}' updated.", tracker.name.green());
+
+    if (name_changed || shortcut_changed) && tracker.shortcut.is_some() {
+        crate::keybindings::sync(db)?;
+    }
+
     Ok(())
 }
 
@@ -130,6 +175,7 @@ pub fn tracker_delete(db: &Database, name: String) -> Result<()> {
         signal_waybar();
     }
 
+    crate::keybindings::sync(db)?;
     println!("Tracker '{}' deleted.", name.red());
     Ok(())
 }
@@ -241,6 +287,12 @@ pub fn waybar(db: &Database) -> Result<()> {
     Ok(())
 }
 
+pub fn sync_keybindings(db: &Database) -> Result<()> {
+    crate::keybindings::sync(db)?;
+    println!("Keybindings synced with Hyprland.");
+    Ok(())
+}
+
 fn validate_color(color: &str) -> Result<()> {
     if color.len() == 7
         && color.starts_with('#')
@@ -250,6 +302,16 @@ fn validate_color(color: &str) -> Result<()> {
     } else {
         Err(AppError::Validation(format!(
             "Invalid color '{color}'. Use hex format: #RRGGBB"
+        )))
+    }
+}
+
+fn validate_shortcut(shortcut: i64) -> Result<()> {
+    if (1..=9).contains(&shortcut) {
+        Ok(())
+    } else {
+        Err(AppError::Validation(format!(
+            "Shortcut must be between 1 and 9, got {shortcut}."
         )))
     }
 }

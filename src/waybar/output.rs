@@ -129,6 +129,7 @@ mod tests {
                 hourly_rate: 15000,
                 state: TrackerState::Created,
                 created_at: "2026-04-01T10:00:00".to_string(),
+                shortcut: None,
             })
             .unwrap();
         if state != TrackerState::Created {
@@ -171,7 +172,7 @@ mod tests {
         assert_eq!(output.class, "active");
         assert!(output.text.contains("Work"));
         assert!(output.text.contains("1h 00m"));
-        assert!(output.tooltip.contains("●"));
+        assert!(output.tooltip.contains("▶"));
         assert!(output.tooltip.contains("$15.000"));
     }
 

@@ -51,7 +51,8 @@ impl Database {
                 icon_path   TEXT,
                 hourly_rate INTEGER NOT NULL,
                 state       TEXT    NOT NULL DEFAULT 'created',
-                created_at  TEXT    NOT NULL
+                created_at  TEXT    NOT NULL,
+                shortcut    INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS sessions (
@@ -75,6 +76,40 @@ impl Database {
 
         if version < 1 {
             self.conn.execute_batch("PRAGMA user_version = 1;")?;
+        }
+
+        if version < 2 {
+            // Add shortcut column if it doesn't exist (existing DBs from before v2)
+            let has_shortcut = self
+                .conn
+                .prepare("SELECT shortcut FROM trackers LIMIT 0")
+                .is_ok();
+
+            if !has_shortcut {
+                self.conn.execute_batch(
+                    "ALTER TABLE trackers ADD COLUMN shortcut INTEGER;",
+                )?;
+            }
+
+            self.conn.execute_batch(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_trackers_shortcut ON trackers(shortcut);",
+            )?;
+
+            // Assign shortcuts 1-9 to existing trackers (ordered by name)
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id FROM trackers ORDER BY name LIMIT 9")?;
+            let ids: Vec<i64> = stmt
+                .query_map([], |row| row.get(0))?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            for (i, id) in ids.iter().enumerate() {
+                self.conn.execute(
+                    "UPDATE trackers SET shortcut = ?1 WHERE id = ?2",
+                    rusqlite::params![(i + 1) as i64, id],
+                )?;
+            }
+
+            self.conn.execute_batch("PRAGMA user_version = 2;")?;
         }
 
         Ok(())

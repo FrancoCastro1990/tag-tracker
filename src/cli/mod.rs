@@ -32,6 +32,8 @@ pub enum Command {
     Status,
     /// Output JSON for waybar module
     Waybar,
+    /// Sync keyboard shortcuts with Hyprland
+    SyncKeybindings,
 }
 
 #[derive(Subcommand, Debug)]
@@ -68,6 +70,9 @@ pub enum TrackerAction {
         /// New icon path
         #[arg(long)]
         icon: Option<PathBuf>,
+        /// Keyboard shortcut number (1-9)
+        #[arg(long)]
+        shortcut: Option<i64>,
     },
     /// Delete a tracker and its sessions
     Delete {

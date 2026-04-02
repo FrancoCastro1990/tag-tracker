@@ -10,6 +10,7 @@ Built for managing multiple jobs or projects where you need clear visibility int
 - **One active at a time** — activating one automatically pauses the previous
 - **Waybar module** — shows active tracker with background color and elapsed time
 - **Tooltip summary** — hover to see today's breakdown per tracker with earnings
+- **Keyboard shortcuts** — `SUPER ALT CTRL + 1-9` to activate trackers, `+ 0` to pause
 - **Click to pause** — single click on the waybar module pauses tracking
 - **Auto-pause on shutdown** — integrates with Hyprland's `exec-shutdown`
 - **Stale session recovery** — detects and closes sessions from previous days on startup
@@ -30,7 +31,7 @@ cp target/release/tag-tracker ~/.local/bin/
 
 - Rust 1.80+
 - Waybar (for status bar integration)
-- Hyprland (optional, for auto-pause on shutdown)
+- Hyprland (for keyboard shortcuts and auto-pause on shutdown)
 
 ## Usage
 
@@ -42,16 +43,40 @@ tag-tracker tracker add "Work A" --color "#55a555" --rate 15000
 tag-tracker tracker add "Work B" --color "#5555a5" --rate 20000
 tag-tracker tracker add "Side Project" --color "#a55555"
 
-# List all trackers
+# List all trackers (shows assigned shortcuts)
 tag-tracker tracker list
 
 # Edit a tracker
 tag-tracker tracker edit "Work A" --rate 18000
 tag-tracker tracker edit "Work A" --new-name "Company A" --color "#66b666"
 
+# Change a tracker's keyboard shortcut (1-9)
+tag-tracker tracker edit "Work A" --shortcut 5
+
 # Delete a tracker
 tag-tracker tracker delete "Side Project"
 ```
+
+### Keyboard shortcuts
+
+Each tracker is automatically assigned a keyboard shortcut (`1-9`) when created. Shortcuts integrate with Hyprland:
+
+| Shortcut | Action |
+|----------|--------|
+| `SUPER ALT CTRL + 1-9` | Activate the tracker assigned to that number |
+| `SUPER ALT CTRL + 0` | Pause the active tracker |
+
+Switching trackers is instant — pressing a different shortcut pauses the current tracker and activates the new one.
+
+```bash
+# Reassign a shortcut
+tag-tracker tracker edit "Work A" --shortcut 5
+
+# Manually sync shortcuts with Hyprland (usually automatic)
+tag-tracker sync-keybindings
+```
+
+Shortcuts are synced to `~/.config/hypr/tag-tracker-bindings.conf` automatically on every `tracker add`, `edit`, or `delete`.
 
 ### Time tracking
 
@@ -138,7 +163,7 @@ This ensures the active session is properly closed when you log out or shut down
 ## How it works
 
 ```
-tag-tracker activate "Work A"
+SUPER ALT CTRL + 1  (or: tag-tracker activate "Work A")
   │
   ├─ Pauses current active tracker (if any)
   ├─ Creates a new session (started_at = now)
@@ -151,6 +176,13 @@ Waybar polls "tag-tracker waybar" every 5 seconds
        ├─ text: pango markup with tracker color, name, elapsed time
        ├─ tooltip: daily summary of all trackers with earnings
        └─ class: "active" or "idle" (idle hides the module)
+
+Keyboard shortcuts are stored in ~/.config/hypr/tag-tracker-bindings.conf
+  │
+  └─ Auto-synced on tracker add/edit/delete
+       ├─ Writes bindd entries for each tracker with a shortcut
+       ├─ Sources itself into hyprland.conf (one-time, idempotent)
+       └─ Reloads Hyprland config via hyprctl reload
 ```
 
 ## Data storage

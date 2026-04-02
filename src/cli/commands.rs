@@ -227,6 +227,6 @@ pub fn waybar(db: &Database) -> Result<()> {
 
 fn signal_waybar() {
     let _ = ProcessCommand::new("pkill")
-        .args(["-RTMIN+10", "waybar"])
+        .args(["-RTMIN+11", "waybar"])
         .status();
 }

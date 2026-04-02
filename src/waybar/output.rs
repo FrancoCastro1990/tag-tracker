@@ -28,11 +28,17 @@ pub fn generate(db: &Database) -> Result<WaybarOutput> {
                 .icon_path
                 .as_deref()
                 .unwrap_or("");
-            if icon.is_empty() {
+            let label = if icon.is_empty() {
                 format!(" {} {} ", tracker.name, duration)
             } else {
                 format!(" {} {} {} ", icon, tracker.name, duration)
-            }
+            };
+            // Pango markup: background=tracker color, foreground=contrasting text
+            let fg = contrasting_fg(&tracker.color);
+            format!(
+                "<span background='{}' foreground='{}'>{}</span>",
+                tracker.color, fg, label
+            )
         }
         None => String::new(),
     };
@@ -85,6 +91,24 @@ pub fn generate(db: &Database) -> Result<WaybarOutput> {
         tooltip: tooltip_lines.join("\n"),
         class,
     })
+}
+
+/// Returns "#000000" or "#ffffff" depending on which contrasts better with the background.
+fn contrasting_fg(hex_color: &str) -> &'static str {
+    let hex = hex_color.trim_start_matches('#');
+    if hex.len() != 6 {
+        return "#ffffff";
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0) as f64;
+    let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f64;
+    let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f64;
+    // Relative luminance formula
+    let luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+    if luminance > 128.0 {
+        "#000000"
+    } else {
+        "#ffffff"
+    }
 }
 
 #[cfg(test)]

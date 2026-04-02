@@ -61,6 +61,7 @@ impl<'a> SessionRepo<'a> {
         Ok(affected as u64)
     }
 
+    #[allow(dead_code)]
     pub fn delete_by_tracker(&self, tracker_id: i64) -> Result<()> {
         self.db.conn().execute(
             "DELETE FROM sessions WHERE tracker_id = ?1",

@@ -16,6 +16,9 @@ pub fn tracker_add(
     rate: i64,
     icon: Option<String>,
 ) -> Result<()> {
+    validate_color(&color)?;
+    validate_rate(rate)?;
+
     let repo = TrackerRepo::new(db);
 
     if repo.find_by_name(&name)?.is_some() {
@@ -91,6 +94,13 @@ pub fn tracker_edit(
     if let Some(n) = new_name {
         tracker.name = n;
     }
+    if let Some(ref c) = color {
+        validate_color(c)?;
+    }
+    if let Some(r) = rate {
+        validate_rate(r)?;
+    }
+
     if let Some(c) = color {
         tracker.color = c;
     }
@@ -112,8 +122,14 @@ pub fn tracker_delete(db: &Database, name: String) -> Result<()> {
         .find_by_name(&name)?
         .ok_or_else(|| AppError::NotFound(format!("Tracker '{name}'")))?;
 
+    let was_active = tracker.state == TrackerState::Active;
     let id = tracker.id.unwrap();
     tracker_repo.delete(id)?;
+
+    if was_active {
+        signal_waybar();
+    }
+
     println!("Tracker '{}' deleted.", name.red());
     Ok(())
 }
@@ -223,6 +239,29 @@ pub fn waybar(db: &Database) -> Result<()> {
     let result = output::generate(db)?;
     println!("{}", serde_json::to_string(&result).unwrap());
     Ok(())
+}
+
+fn validate_color(color: &str) -> Result<()> {
+    if color.len() == 7
+        && color.starts_with('#')
+        && color[1..].chars().all(|c| c.is_ascii_hexdigit())
+    {
+        Ok(())
+    } else {
+        Err(AppError::Validation(format!(
+            "Invalid color '{color}'. Use hex format: #RRGGBB"
+        )))
+    }
+}
+
+fn validate_rate(rate: i64) -> Result<()> {
+    if rate > 0 {
+        Ok(())
+    } else {
+        Err(AppError::Validation(
+            "Hourly rate must be positive.".into(),
+        ))
+    }
 }
 
 fn signal_waybar() {

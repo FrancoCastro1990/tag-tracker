@@ -26,6 +26,7 @@ impl<'a> TrackerRepo<'a> {
         Ok(self.db.conn().last_insert_rowid())
     }
 
+    #[allow(dead_code)]
     pub fn get_by_id(&self, id: i64) -> Result<Tracker> {
         self.db
             .conn()

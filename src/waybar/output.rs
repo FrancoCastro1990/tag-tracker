@@ -55,9 +55,9 @@ pub fn generate(db: &Database) -> Result<WaybarOutput> {
         total_earnings += earnings;
 
         let symbol = match tracker.state {
-            TrackerState::Active => "●",
-            TrackerState::Paused => "◉",
-            TrackerState::Created => "○",
+            TrackerState::Active => "▶",
+            TrackerState::Paused => "⏸",
+            TrackerState::Created => "-",
         };
 
         if seconds > 0 || tracker.state == TrackerState::Active {
@@ -72,7 +72,7 @@ pub fn generate(db: &Database) -> Result<WaybarOutput> {
     }
 
     if !tooltip_lines.is_empty() {
-        tooltip_lines.push("──────────".to_string());
+        tooltip_lines.push("----------".to_string());
         tooltip_lines.push(format!(
             "Total: {} | {}",
             format_duration(total_seconds),

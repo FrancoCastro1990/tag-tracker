@@ -255,11 +255,11 @@ fn validate_color(color: &str) -> Result<()> {
 }
 
 fn validate_rate(rate: i64) -> Result<()> {
-    if rate > 0 {
+    if rate >= 0 {
         Ok(())
     } else {
         Err(AppError::Validation(
-            "Hourly rate must be positive.".into(),
+            "Hourly rate cannot be negative.".into(),
         ))
     }
 }

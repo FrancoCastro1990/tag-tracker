@@ -43,8 +43,8 @@ pub enum TrackerAction {
         /// Hex color (e.g. "#55a555")
         #[arg(long)]
         color: String,
-        /// Hourly rate in CLP (e.g. 15000)
-        #[arg(long)]
+        /// Hourly rate in CLP (e.g. 15000, default: 0)
+        #[arg(long, default_value_t = 0)]
         rate: i64,
         /// Path to icon file (optional)
         #[arg(long)]

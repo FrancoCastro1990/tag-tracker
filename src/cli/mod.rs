@@ -40,6 +40,8 @@ pub enum Command {
     Waybar,
     /// Open tracker picker menu (Walker)
     Menu,
+    /// Output JSON for EWW popup widget
+    Eww,
     /// Sync keyboard shortcuts with Hyprland
     SyncKeybindings,
 }

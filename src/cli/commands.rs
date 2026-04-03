@@ -313,6 +313,47 @@ pub fn waybar(db: &Database) -> Result<()> {
     Ok(())
 }
 
+pub fn generate_eww_json(db: &Database) -> Result<String> {
+    let tracker_repo = TrackerRepo::new(db);
+    let session_repo = SessionRepo::new(db);
+    let trackers = tracker_repo.get_all()?;
+
+    let mut tracker_entries = Vec::new();
+    let mut total_seconds: i64 = 0;
+    let mut total_earnings_val: i64 = 0;
+
+    for tracker in &trackers {
+        let tracker_id = tracker.id.unwrap();
+        let seconds = session_repo.today_seconds(tracker_id)?;
+        let earnings = calculate_earnings(seconds, tracker.hourly_rate);
+        total_seconds += seconds;
+        total_earnings_val += earnings;
+
+        if seconds > 0 || tracker.state == TrackerState::Active {
+            tracker_entries.push(serde_json::json!({
+                "name": tracker.name,
+                "color": tracker.color,
+                "state": tracker.state.to_string().to_lowercase(),
+                "duration": format_duration(seconds),
+                "earnings": format_clp(earnings),
+            }));
+        }
+    }
+
+    let output = serde_json::json!({
+        "trackers": tracker_entries,
+        "total_duration": format_duration(total_seconds),
+        "total_earnings": format_clp(total_earnings_val),
+    });
+
+    Ok(serde_json::to_string(&output).unwrap())
+}
+
+pub fn eww(db: &Database) -> Result<()> {
+    println!("{}", generate_eww_json(db)?);
+    Ok(())
+}
+
 pub fn menu(db: &Database) -> Result<()> {
     let tracker_repo = TrackerRepo::new(db);
     let trackers = tracker_repo.get_all()?;
@@ -431,6 +472,58 @@ fn signal_waybar() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn eww_output_with_active_tracker() {
+        let db = crate::db::connection::Database::in_memory().unwrap();
+        let tracker_repo = crate::db::tracker_repo::TrackerRepo::new(&db);
+
+        let id = tracker_repo
+            .create(&crate::domain::tracker::Tracker {
+                id: None,
+                name: "Work".to_string(),
+                color: "#55a555".to_string(),
+                icon_path: None,
+                hourly_rate: 15000,
+                state: crate::domain::tracker::TrackerState::Created,
+                created_at: "2026-04-01T10:00:00".to_string(),
+                shortcut: None,
+            })
+            .unwrap();
+        tracker_repo
+            .update_state(id, crate::domain::tracker::TrackerState::Active)
+            .unwrap();
+
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        db.conn()
+            .execute(
+                "INSERT INTO sessions (tracker_id, started_at, ended_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![id, format!("{today}T10:00:00"), format!("{today}T11:00:00")],
+            )
+            .unwrap();
+
+        let json = generate_eww_json(&db).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed["trackers"][0]["name"], "Work");
+        assert_eq!(parsed["trackers"][0]["color"], "#55a555");
+        assert_eq!(parsed["trackers"][0]["state"], "active");
+        assert_eq!(parsed["trackers"][0]["duration"], "1h 00m");
+        assert_eq!(parsed["trackers"][0]["earnings"], "$15.000");
+        assert_eq!(parsed["total_duration"], "1h 00m");
+        assert_eq!(parsed["total_earnings"], "$15.000");
+    }
+
+    #[test]
+    fn eww_output_empty_when_no_sessions() {
+        let db = crate::db::connection::Database::in_memory().unwrap();
+        let json = generate_eww_json(&db).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert!(parsed["trackers"].as_array().unwrap().is_empty());
+        assert_eq!(parsed["total_duration"], "0m");
+        assert_eq!(parsed["total_earnings"], "$0");
+    }
 
     #[test]
     fn validate_date_valid_inputs() {

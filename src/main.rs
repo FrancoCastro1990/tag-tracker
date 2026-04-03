@@ -81,6 +81,7 @@ fn run() -> error::Result<()> {
         Command::Status { date, name } => cli::commands::status(&db, date, name),
         Command::Waybar => cli::commands::waybar(&db),
         Command::Menu => cli::commands::menu(&db),
+        Command::Eww => cli::commands::eww(&db),
         Command::SyncKeybindings => cli::commands::sync_keybindings(&db),
     }
 }

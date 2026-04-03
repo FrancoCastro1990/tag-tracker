@@ -8,10 +8,11 @@ Built for managing multiple jobs or projects where you need clear visibility int
 
 - **Multiple trackers** with custom name, color, and hourly rate
 - **One active at a time** — activating one automatically pauses the previous
-- **Waybar module** — shows active tracker with background color and elapsed time
-- **Tooltip summary** — hover to see today's breakdown per tracker with earnings
+- **Waybar module** — shows active tracker with color and elapsed time in a pill badge
+- **Tooltip summary** — hover to see today's breakdown per tracker with earnings (pango markup, aligned columns)
 - **Keyboard shortcuts** — `SUPER ALT CTRL + 1-9` to activate trackers, `+ 0` to pause
-- **Click to pause** — single click on the waybar module pauses tracking
+- **Click to pick** — click the waybar module to open a Walker menu, select a tracker to activate or click the active one to pause
+- **Date reports** — view status for any specific date with `--date DD/MM/YYYY`
 - **Auto-pause on shutdown** — integrates with Hyprland's `exec-shutdown`
 - **Stale session recovery** — detects and closes sessions from previous days on startup
 - **Daily earnings** — calculates how much you've earned based on hours worked
@@ -94,6 +95,7 @@ tag-tracker pause
 ### Viewing status
 
 ```bash
+# Today's status (all trackers)
 $ tag-tracker status
 ● Active: Work B
   Time today: 2h 34m
@@ -105,6 +107,21 @@ $ tag-tracker status
 
 ───────────────────────────────────
 Total today: 3h 49m | $73.833
+
+# Report for a specific date (DD/MM/YYYY)
+$ tag-tracker status --date 01/04/2026
+Report for 01/04/2026
+
+◉ Paused: Work A
+  Time: 3h 00m
+  Earned:     $45.000
+
+───────────────────────────────────
+Total: 3h 00m | $45.000
+
+# Filter by tracker name (works with or without --date)
+$ tag-tracker status "Work A"
+$ tag-tracker status --date 01/04/2026 "Work A"
 ```
 
 ## Waybar Integration
@@ -125,7 +142,7 @@ Add to `~/.config/waybar/config.jsonc`:
     "interval": 5,
     "signal": 11,
     "tooltip": true,
-    "on-click": "tag-tracker pause"
+    "on-click": "tag-tracker menu"
 }
 ```
 
@@ -137,18 +154,27 @@ Add to `~/.config/waybar/style.css`:
 
 ```css
 #custom-tag-tracker {
-    margin: 0 4px;
-    padding: 0 8px;
-    border-radius: 4px;
+    margin: 0 6px;
+    padding: 0 10px;
+    border-radius: 10px;
     transition: all 0.3s ease;
 }
 
 #custom-tag-tracker.active {
-    font-weight: bold;
+    background-color: rgba(255, 255, 255, 0.07);
+}
+
+#custom-tag-tracker.active:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+#custom-tag-tracker.idle {
+    opacity: 0.35;
+    font-size: 10px;
 }
 ```
 
-The tracker's background color is applied dynamically via pango markup with automatic contrast detection for the foreground text.
+The active tracker's color is applied to the text via pango markup, with a subtle semi-transparent pill background from CSS.
 
 ### Auto-pause on shutdown
 

@@ -37,7 +37,7 @@ impl<'a> SessionRepo<'a> {
 
     /// Calculate total seconds for a tracker on a given date.
     /// For sessions still active (ended_at IS NULL), uses current time as end.
-    fn today_seconds_for_date(&self, tracker_id: i64, date: &str) -> Result<i64> {
+    pub fn today_seconds_for_date(&self, tracker_id: i64, date: &str) -> Result<i64> {
         let now = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let total: i64 = self.db.conn().query_row(
             "SELECT COALESCE(SUM(
@@ -222,6 +222,63 @@ mod tests {
             )
             .unwrap();
         assert!(ended.is_some());
+    }
+
+    #[test]
+    fn seconds_for_specific_date() {
+        let db = setup();
+        let tracker_id = create_tracker(&db, "Test");
+
+        db.conn()
+            .execute(
+                "INSERT INTO sessions (tracker_id, started_at, ended_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![tracker_id, "2025-06-15T10:00:00", "2025-06-15T11:00:00"],
+            )
+            .unwrap();
+
+        let repo = SessionRepo::new(&db);
+        assert_eq!(
+            repo.today_seconds_for_date(tracker_id, "2025-06-15")
+                .unwrap(),
+            3600
+        );
+        assert_eq!(
+            repo.today_seconds_for_date(tracker_id, "2025-06-16")
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn seconds_for_date_filters_by_tracker() {
+        let db = setup();
+        let tracker_a = create_tracker(&db, "A");
+        let tracker_b = create_tracker(&db, "B");
+
+        db.conn()
+            .execute(
+                "INSERT INTO sessions (tracker_id, started_at, ended_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![tracker_a, "2025-06-15T10:00:00", "2025-06-15T11:00:00"],
+            )
+            .unwrap();
+        db.conn()
+            .execute(
+                "INSERT INTO sessions (tracker_id, started_at, ended_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![tracker_b, "2025-06-15T14:00:00", "2025-06-15T14:30:00"],
+            )
+            .unwrap();
+
+        let repo = SessionRepo::new(&db);
+        assert_eq!(
+            repo.today_seconds_for_date(tracker_a, "2025-06-15")
+                .unwrap(),
+            3600
+        );
+        assert_eq!(
+            repo.today_seconds_for_date(tracker_b, "2025-06-15")
+                .unwrap(),
+            1800
+        );
     }
 
     #[test]

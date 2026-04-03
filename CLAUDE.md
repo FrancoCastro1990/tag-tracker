@@ -22,13 +22,13 @@ CLI time tracker for Hyprland/Waybar. Single binary, no daemon. Rust edition 202
 ### Module layout
 
 - `cli/mod.rs` — clap derive structs (`Command`, `TrackerAction` enums)
-- `cli/commands.rs` — command handlers + validation functions (color, rate, shortcut)
+- `cli/commands.rs` — command handlers + validation functions (color, rate, shortcut, date)
 - `domain/tracker.rs` — `Tracker` struct, `TrackerState` enum (Created/Active/Paused)
 - `domain/session.rs` — `Session` struct (time intervals per tracker)
 - `db/connection.rs` — `Database` struct, schema init, migrations via `PRAGMA user_version`
 - `db/tracker_repo.rs` — tracker CRUD + `next_available_shortcut()` (1-9 allocation)
-- `db/session_repo.rs` — session lifecycle + time/earnings calculations (`format_duration`, `format_clp`, `calculate_earnings`)
-- `waybar/output.rs` — `WaybarOutput` JSON generation with pango markup, auto-contrast foreground via luminance formula
+- `db/session_repo.rs` — session lifecycle + time/earnings calculations (`format_duration`, `format_clp`, `calculate_earnings`) + `today_seconds_for_date()` for date-specific queries
+- `waybar/output.rs` — `WaybarOutput` JSON generation with pango markup (tracker color as foreground, aligned tooltip columns)
 - `keybindings.rs` — generates `~/.config/hypr/tag-tracker-bindings.conf`, ensures `source` line in hyprland.conf, calls `hyprctl reload`
 - `error.rs` — `AppError` enum (Database, Io, Validation, NotFound) via thiserror
 
@@ -38,7 +38,7 @@ CLI time tracker for Hyprland/Waybar. Single binary, no daemon. Rust edition 202
 
 **Only one active tracker:** `activate` pauses the current active tracker (if any) before activating the new one. State transitions: Created → Active ↔ Paused.
 
-**Waybar integration:** Polls `tag-tracker waybar` every 5s + instant refresh via signal 11. Output is JSON with pango markup (background color from tracker, foreground from `contrasting_fg()` luminance check).
+**Waybar integration:** Polls `tag-tracker waybar` every 5s + instant refresh via signal 11. Output is JSON with pango markup (tracker color as text foreground, CSS pill background). Click opens Walker picker via `tag-tracker menu`.
 
 **Keybindings sync:** `keybindings::sync()` regenerates the bindings file from DB state. Called automatically after `tracker add/edit/delete`. Bindings use `SUPER ALT CTRL + 0-9`. The `ensure_hyprland_source()` function is idempotent.
 

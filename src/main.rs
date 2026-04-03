@@ -78,8 +78,9 @@ fn run() -> error::Result<()> {
         },
         Command::Activate { name } => cli::commands::activate(&db, name),
         Command::Pause => cli::commands::pause(&db),
-        Command::Status => cli::commands::status(&db),
+        Command::Status { date, name } => cli::commands::status(&db, date, name),
         Command::Waybar => cli::commands::waybar(&db),
+        Command::Menu => cli::commands::menu(&db),
         Command::SyncKeybindings => cli::commands::sync_keybindings(&db),
     }
 }

@@ -28,10 +28,18 @@ pub enum Command {
     },
     /// Pause the currently active tracker
     Pause,
-    /// Show today's status: time per tracker, earnings, totals
-    Status,
+    /// Show status: time per tracker, earnings, totals
+    Status {
+        /// Date to report on (DD/MM/YYYY format, defaults to today)
+        #[arg(long, short)]
+        date: Option<String>,
+        /// Show only this tracker (optional, shows all if omitted)
+        name: Option<String>,
+    },
     /// Output JSON for waybar module
     Waybar,
+    /// Open tracker picker menu (Walker)
+    Menu,
     /// Sync keyboard shortcuts with Hyprland
     SyncKeybindings,
 }

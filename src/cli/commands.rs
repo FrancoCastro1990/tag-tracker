@@ -227,22 +227,48 @@ pub fn pause(db: &Database) -> Result<()> {
     Ok(())
 }
 
-pub fn status(db: &Database) -> Result<()> {
+pub fn status(db: &Database, date: Option<String>, name: Option<String>) -> Result<()> {
     let tracker_repo = TrackerRepo::new(db);
     let session_repo = SessionRepo::new(db);
-    let trackers = tracker_repo.get_all()?;
+
+    let is_today = date.is_none();
+    let date_str = match &date {
+        Some(d) => validate_date(d)?,
+        None => chrono::Local::now().format("%Y-%m-%d").to_string(),
+    };
+
+    let trackers = match &name {
+        Some(n) => {
+            let tracker = tracker_repo
+                .find_by_name(n)?
+                .ok_or_else(|| AppError::NotFound(format!("Tracker '{n}'")))?;
+            vec![tracker]
+        }
+        None => tracker_repo.get_all()?,
+    };
 
     if trackers.is_empty() {
         println!("No trackers found.");
         return Ok(());
     }
 
+    if !is_today {
+        println!("Report for {}", date.as_ref().unwrap().bold());
+        println!();
+    }
+
+    let (time_label, no_time_label, total_label) = if is_today {
+        ("Time today:", "Not started today", "Total today:")
+    } else {
+        ("Time:", "No sessions", "Total:")
+    };
+
     let mut total_seconds: i64 = 0;
     let mut total_earnings: i64 = 0;
 
     for tracker in &trackers {
         let tracker_id = tracker.id.unwrap();
-        let seconds = session_repo.today_seconds(tracker_id)?;
+        let seconds = session_repo.today_seconds_for_date(tracker_id, &date_str)?;
         let earnings = calculate_earnings(seconds, tracker.hourly_rate);
         total_seconds += seconds;
         total_earnings += earnings;
@@ -264,17 +290,17 @@ pub fn status(db: &Database) -> Result<()> {
 
         println!("{} {}", symbol, name_display);
         if seconds > 0 {
-            println!("  Time today: {}", format_duration(seconds));
+            println!("  {time_label} {}", format_duration(seconds));
             println!("  Earned:     {}", format_clp(earnings));
         } else {
-            println!("  Not started today");
+            println!("  {no_time_label}");
         }
         println!();
     }
 
     println!("{}", "─".repeat(35));
     println!(
-        "Total today: {} | {}",
+        "{total_label} {} | {}",
         format_duration(total_seconds),
         format_clp(total_earnings),
     );
@@ -287,10 +313,80 @@ pub fn waybar(db: &Database) -> Result<()> {
     Ok(())
 }
 
+pub fn menu(db: &Database) -> Result<()> {
+    let tracker_repo = TrackerRepo::new(db);
+    let trackers = tracker_repo.get_all()?;
+    let active = tracker_repo.find_active()?;
+
+    let mut options: Vec<String> = Vec::new();
+
+    for t in &trackers {
+        let symbol = match t.state {
+            TrackerState::Active => "⏸",
+            TrackerState::Paused => "󰔛",
+            TrackerState::Created => "󰔛",
+        };
+        options.push(format!("{}  {}", symbol, t.name));
+    }
+
+    if options.is_empty() {
+        return Ok(());
+    }
+
+    let input = options.join("\n");
+    let walker = ProcessCommand::new("walker")
+        .args(["--dmenu", "--placeholder", "Select tracker..."])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+
+    let mut child = match walker {
+        Ok(c) => c,
+        Err(_) => return Ok(()), // Walker not available, silently exit
+    };
+
+    if let Some(stdin) = child.stdin.take() {
+        use std::io::Write;
+        let mut stdin = stdin;
+        let _ = stdin.write_all(input.as_bytes());
+    }
+
+    let output = child.wait_with_output()?;
+    let selection = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    if selection.is_empty() {
+        return Ok(()); // User cancelled
+    }
+
+    // Extract tracker name (after the icon + spaces)
+    let tracker_name = selection
+        .split("  ")
+        .last()
+        .unwrap_or(&selection)
+        .to_string();
+
+    // If selected tracker is the active one, pause it; otherwise activate it
+    if let Some(ref a) = active {
+        if a.name == tracker_name {
+            return pause(db);
+        }
+    }
+
+    activate(db, tracker_name)
+}
+
 pub fn sync_keybindings(db: &Database) -> Result<()> {
     crate::keybindings::sync(db)?;
     println!("Keybindings synced with Hyprland.");
     Ok(())
+}
+
+fn validate_date(input: &str) -> Result<String> {
+    let parsed = chrono::NaiveDate::parse_from_str(input, "%d/%m/%Y").map_err(|_| {
+        AppError::Validation(format!("Invalid date '{input}'. Use DD/MM/YYYY format."))
+    })?;
+    Ok(parsed.format("%Y-%m-%d").to_string())
 }
 
 fn validate_color(color: &str) -> Result<()> {
@@ -330,4 +426,29 @@ fn signal_waybar() {
     let _ = ProcessCommand::new("pkill")
         .args(["-RTMIN+11", "waybar"])
         .status();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_date_valid_inputs() {
+        assert_eq!(validate_date("02/04/2026").unwrap(), "2026-04-02");
+        assert_eq!(validate_date("31/12/2025").unwrap(), "2025-12-31");
+        assert_eq!(validate_date("01/01/2020").unwrap(), "2020-01-01");
+    }
+
+    #[test]
+    fn validate_date_invalid_format() {
+        assert!(validate_date("2026-04-02").is_err());
+        assert!(validate_date("not-a-date").is_err());
+        assert!(validate_date("").is_err());
+    }
+
+    #[test]
+    fn validate_date_impossible_dates() {
+        assert!(validate_date("31/02/2026").is_err());
+        assert!(validate_date("29/02/2025").is_err());
+    }
 }

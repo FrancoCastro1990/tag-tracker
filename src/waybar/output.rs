@@ -27,23 +27,25 @@ pub fn generate(db: &Database) -> Result<WaybarOutput> {
             let icon = tracker
                 .icon_path
                 .as_deref()
-                .unwrap_or("");
-            let label = if icon.is_empty() {
-                format!(" {} {} ", tracker.name, duration)
-            } else {
-                format!(" {} {} {} ", icon, tracker.name, duration)
-            };
-            // Pango markup: background=tracker color, foreground=contrasting text
-            let fg = contrasting_fg(&tracker.color);
+                .unwrap_or("󰔛");
             format!(
-                "<span background='{}' foreground='{}'>{}</span>",
-                tracker.color, fg, label
+                "<span foreground='{}' font_weight='bold'>{} {} · {}</span>",
+                tracker.color, icon, tracker.name, duration
             )
         }
-        None => String::new(),
+        None => "󰔛".to_string(),
     };
 
-    let mut tooltip_lines: Vec<String> = Vec::new();
+    // Collect tracker data for tooltip
+    struct TrackerRow {
+        symbol: &'static str,
+        name: String,
+        color: String,
+        duration: String,
+        earnings: String,
+    }
+
+    let mut rows: Vec<TrackerRow> = Vec::new();
     let mut total_seconds: i64 = 0;
     let mut total_earnings: i64 = 0;
 
@@ -55,28 +57,59 @@ pub fn generate(db: &Database) -> Result<WaybarOutput> {
         total_earnings += earnings;
 
         let symbol = match tracker.state {
-            TrackerState::Active => "▶",
-            TrackerState::Paused => "⏸",
-            TrackerState::Created => "-",
+            TrackerState::Active => "",
+            TrackerState::Paused => "",
+            TrackerState::Created => "○",
         };
 
         if seconds > 0 || tracker.state == TrackerState::Active {
-            tooltip_lines.push(format!(
-                "{} {}: {} ({})",
+            rows.push(TrackerRow {
                 symbol,
-                tracker.name,
-                format_duration(seconds),
-                format_clp(earnings),
-            ));
+                name: tracker.name.clone(),
+                color: tracker.color.clone(),
+                duration: format_duration(seconds),
+                earnings: format_clp(earnings),
+            });
         }
     }
 
-    if !tooltip_lines.is_empty() {
-        tooltip_lines.push("----------".to_string());
+    let mut tooltip_lines: Vec<String> = Vec::new();
+
+    if !rows.is_empty() {
+        // Calculate column widths for alignment
+        let max_name = rows.iter().map(|r| r.name.len()).max().unwrap_or(0);
+        let max_dur = rows.iter().map(|r| r.duration.len()).max().unwrap_or(0);
+        let max_earn = rows.iter().map(|r| r.earnings.len()).max().unwrap_or(0);
+
+        for row in &rows {
+            tooltip_lines.push(format!(
+                "{}  <span foreground='{}'>{:<nw$}</span>   <b>{:>dw$}</b>   <span alpha='60%'>{:>ew$}</span>",
+                row.symbol,
+                row.color,
+                row.name,
+                row.duration,
+                row.earnings,
+                nw = max_name,
+                dw = max_dur,
+                ew = max_earn,
+            ));
+        }
+
+        let total_dur = format_duration(total_seconds);
+        let total_earn = format_clp(total_earnings);
+
         tooltip_lines.push(format!(
-            "Total: {} | {}",
-            format_duration(total_seconds),
-            format_clp(total_earnings),
+            "<span alpha='30%'>{}</span>",
+            "─".repeat(max_name + max_dur + max_earn + 12)
+        ));
+        tooltip_lines.push(format!(
+            "󰔛  {:<nw$}   <b>{:>dw$}</b>   {:>ew$}",
+            "Total",
+            total_dur,
+            total_earn,
+            nw = max_name,
+            dw = max_dur,
+            ew = max_earn,
         ));
     }
 
@@ -91,24 +124,6 @@ pub fn generate(db: &Database) -> Result<WaybarOutput> {
         tooltip: tooltip_lines.join("\n"),
         class,
     })
-}
-
-/// Returns "#000000" or "#ffffff" depending on which contrasts better with the background.
-fn contrasting_fg(hex_color: &str) -> &'static str {
-    let hex = hex_color.trim_start_matches('#');
-    if hex.len() != 6 {
-        return "#ffffff";
-    }
-    let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0) as f64;
-    let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f64;
-    let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f64;
-    // Relative luminance formula
-    let luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-    if luminance > 128.0 {
-        "#000000"
-    } else {
-        "#ffffff"
-    }
 }
 
 #[cfg(test)]
@@ -142,7 +157,7 @@ mod tests {
     fn idle_when_no_trackers() {
         let db = Database::in_memory().unwrap();
         let output = generate(&db).unwrap();
-        assert_eq!(output.text, "");
+        assert_eq!(output.text, "󰔛");
         assert_eq!(output.class, "idle");
         assert_eq!(output.tooltip, "");
     }
@@ -151,7 +166,7 @@ mod tests {
     fn idle_when_no_active_tracker() {
         let (db, _) = setup_db_with_tracker("Work", TrackerState::Paused);
         let output = generate(&db).unwrap();
-        assert_eq!(output.text, "");
+        assert_eq!(output.text, "󰔛");
         assert_eq!(output.class, "idle");
     }
 
@@ -172,7 +187,7 @@ mod tests {
         assert_eq!(output.class, "active");
         assert!(output.text.contains("Work"));
         assert!(output.text.contains("1h 00m"));
-        assert!(output.tooltip.contains("▶"));
+        assert!(output.tooltip.contains(""));
         assert!(output.tooltip.contains("$15.000"));
     }
 

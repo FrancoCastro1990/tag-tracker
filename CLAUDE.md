@@ -23,7 +23,7 @@ CLI time tracker for Hyprland/Waybar. Single binary, no daemon. Rust edition 202
 
 - `cli/mod.rs` — clap derive structs (`Command`, `TrackerAction` enums)
 - `cli/commands.rs` — command handlers + validation functions (color, rate, shortcut, date)
-- `domain/tracker.rs` — `Tracker` struct, `TrackerState` enum (Created/Active/Paused)
+- `domain/tracker.rs` — `Tracker` struct, `TrackerState` enum (Created/Active/Paused), `TrackerType` enum (Freelance/Contract), `calculate_contract_rate()`
 - `domain/session.rs` — `Session` struct (time intervals per tracker)
 - `db/connection.rs` — `Database` struct, schema init, migrations via `PRAGMA user_version`
 - `db/tracker_repo.rs` — tracker CRUD + `next_available_shortcut()` (1-9 allocation)
@@ -34,7 +34,7 @@ CLI time tracker for Hyprland/Waybar. Single binary, no daemon. Rust edition 202
 
 ### Key patterns
 
-**DB migrations:** `connection.rs` uses `PRAGMA user_version` to track schema version. Migrations run in `Database::new()`. Current version: 2. Column detection (`SELECT col LIMIT 0`) handles fresh vs existing DBs.
+**DB migrations:** `connection.rs` uses `PRAGMA user_version` to track schema version. Migrations run in `Database::new()`. Current version: 3. Column detection (`SELECT col LIMIT 0`) handles fresh vs existing DBs. V3 added `tracker_type`, `salary`, `weekly_hours` columns.
 
 **Only one active tracker:** `activate` pauses the current active tracker (if any) before activating the new one. State transitions: Created → Active ↔ Paused.
 
@@ -43,6 +43,8 @@ CLI time tracker for Hyprland/Waybar. Single binary, no daemon. Rust edition 202
 **Keybindings sync:** `keybindings::sync()` regenerates the bindings file from DB state. Called automatically after `tracker add/edit/delete`. Bindings use `SUPER ALT CTRL + 0-9`. The `ensure_hyprland_source()` function is idempotent.
 
 **Stale session recovery:** `close_stale_sessions()` runs on every startup to close sessions left open from previous days (crash recovery).
+
+**Tracker types:** Freelance trackers use a direct `--rate`. Contract trackers use `--contract --salary X --weekly-hours Y` and auto-calculate `hourly_rate = salary / (weekly_hours * 4.33)`. Both types store `hourly_rate` so downstream earnings logic is unchanged.
 
 **CLP formatting:** Chilean peso format with dots as thousands separator (`$15.000` = 15 thousand).
 

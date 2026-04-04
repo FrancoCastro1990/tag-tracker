@@ -3,7 +3,7 @@ use serde::Serialize;
 use crate::db::connection::Database;
 use crate::db::session_repo::{SessionRepo, calculate_earnings, format_clp, format_duration};
 use crate::db::tracker_repo::TrackerRepo;
-use crate::domain::tracker::TrackerState;
+use crate::domain::tracker::{TrackerState, TrackerType};
 use crate::error::Result;
 
 #[derive(Debug, Serialize)]
@@ -28,9 +28,13 @@ pub fn generate(db: &Database) -> Result<WaybarOutput> {
                 .icon_path
                 .as_deref()
                 .unwrap_or("󰔛");
+            let type_badge = match tracker.tracker_type {
+                TrackerType::Contract => " ",
+                TrackerType::Freelance => "",
+            };
             format!(
-                "<span foreground='{}' font_weight='bold'>{} {} · {}</span>",
-                tracker.color, icon, tracker.name, duration
+                "<span foreground='{}' font_weight='bold'>{} {}{} · {}</span>",
+                tracker.color, icon, tracker.name, type_badge, duration
             )
         }
         None => "󰔛".to_string(),
@@ -43,6 +47,7 @@ pub fn generate(db: &Database) -> Result<WaybarOutput> {
         color: String,
         duration: String,
         earnings: String,
+        tracker_type: TrackerType,
     }
 
     let mut rows: Vec<TrackerRow> = Vec::new();
@@ -69,6 +74,7 @@ pub fn generate(db: &Database) -> Result<WaybarOutput> {
                 color: tracker.color.clone(),
                 duration: format_duration(seconds),
                 earnings: format_clp(earnings),
+                tracker_type: tracker.tracker_type,
             });
         }
     }
@@ -82,11 +88,16 @@ pub fn generate(db: &Database) -> Result<WaybarOutput> {
         let max_earn = rows.iter().map(|r| r.earnings.len()).max().unwrap_or(0);
 
         for row in &rows {
+            let type_indicator = match row.tracker_type {
+                TrackerType::Contract => " ",
+                TrackerType::Freelance => "",
+            };
             tooltip_lines.push(format!(
-                "{}  <span foreground='{}'>{:<nw$}</span>   <b>{:>dw$}</b>   <span alpha='60%'>{:>ew$}</span>",
+                "{}  <span foreground='{}'>{:<nw$}</span>{:>2}   <b>{:>dw$}</b>   <span alpha='60%'>{:>ew$}</span>",
                 row.symbol,
                 row.color,
                 row.name,
+                type_indicator,
                 row.duration,
                 row.earnings,
                 nw = max_name,
@@ -129,7 +140,7 @@ pub fn generate(db: &Database) -> Result<WaybarOutput> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::tracker::Tracker;
+    use crate::domain::tracker::{Tracker, TrackerType};
     use chrono::Local;
 
     fn setup_db_with_tracker(name: &str, state: TrackerState) -> (Database, i64) {
@@ -145,6 +156,9 @@ mod tests {
                 state: TrackerState::Created,
                 created_at: "2026-04-01T10:00:00".to_string(),
                 shortcut: None,
+                tracker_type: TrackerType::Freelance,
+                salary: None,
+                weekly_hours: None,
             })
             .unwrap();
         if state != TrackerState::Created {

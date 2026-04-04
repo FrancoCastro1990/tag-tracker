@@ -101,7 +101,7 @@ pub fn format_clp(amount: i64) -> String {
 mod tests {
     use super::*;
     use crate::db::tracker_repo::TrackerRepo;
-    use crate::domain::tracker::{Tracker, TrackerState};
+    use crate::domain::tracker::{Tracker, TrackerState, TrackerType};
 
     fn setup() -> Database {
         Database::in_memory().unwrap()
@@ -118,6 +118,9 @@ mod tests {
             state: TrackerState::Created,
             created_at: "2026-04-01T10:00:00".to_string(),
             shortcut: None,
+            tracker_type: TrackerType::Freelance,
+            salary: None,
+            weekly_hours: None,
         })
         .unwrap()
     }

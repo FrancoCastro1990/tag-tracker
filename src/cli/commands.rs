@@ -5,19 +5,22 @@ use colored::Colorize;
 use crate::db::connection::Database;
 use crate::db::session_repo::{SessionRepo, calculate_earnings, format_clp, format_duration};
 use crate::db::tracker_repo::TrackerRepo;
-use crate::domain::tracker::{Tracker, TrackerState};
+use crate::domain::tracker::{Tracker, TrackerState, TrackerType, calculate_contract_rate};
 use crate::error::{AppError, Result};
 use crate::waybar::output;
 
+#[allow(clippy::too_many_arguments)]
 pub fn tracker_add(
     db: &Database,
     name: String,
     color: String,
     rate: i64,
     icon: Option<String>,
+    contract: bool,
+    salary: Option<i64>,
+    weekly_hours: Option<i64>,
 ) -> Result<()> {
     validate_color(&color)?;
-    validate_rate(rate)?;
 
     let repo = TrackerRepo::new(db);
 
@@ -26,6 +29,18 @@ pub fn tracker_add(
             "Tracker '{name}' already exists."
         )));
     }
+
+    let (tracker_type, hourly_rate, salary, weekly_hours) = if contract {
+        let sal = salary.unwrap();
+        let wh = weekly_hours.unwrap();
+        validate_salary(sal)?;
+        validate_weekly_hours(wh)?;
+        let computed_rate = calculate_contract_rate(sal, wh);
+        (TrackerType::Contract, computed_rate, Some(sal), Some(wh))
+    } else {
+        validate_rate(rate)?;
+        (TrackerType::Freelance, rate, None, None)
+    };
 
     let shortcut = repo.next_available_shortcut()?;
 
@@ -38,25 +53,34 @@ pub fn tracker_add(
         name: name.clone(),
         color,
         icon_path: icon,
-        hourly_rate: rate,
+        hourly_rate,
         state: TrackerState::Created,
         created_at: now,
         shortcut,
+        tracker_type,
+        salary,
+        weekly_hours,
     };
 
     repo.create(&tracker)?;
 
-    if let Some(s) = shortcut {
-        println!(
-            "Tracker '{}' created. Shortcut: SUPER ALT CTRL + {}",
+    let shortcut_msg = match shortcut {
+        Some(s) => format!(" Shortcut: SUPER ALT CTRL + {s}"),
+        None => " No shortcut available (max 9).".to_string(),
+    };
+
+    match tracker_type {
+        TrackerType::Contract => println!(
+            "Contract tracker '{}' created (rate: {}/hr).{}",
             name.green(),
-            s
-        );
-    } else {
-        println!(
-            "Tracker '{}' created. No shortcut available (max 9).",
-            name.green()
-        );
+            format_clp(hourly_rate),
+            shortcut_msg,
+        ),
+        TrackerType::Freelance => println!(
+            "Tracker '{}' created.{}",
+            name.green(),
+            shortcut_msg,
+        ),
     }
 
     crate::keybindings::sync(db)?;
@@ -73,10 +97,10 @@ pub fn tracker_list(db: &Database) -> Result<()> {
     }
 
     println!(
-        " {:<5} {:<15} {:<12} {:<10} {:<10}",
-        "Key", "Name", "Rate/hr", "Color", "State"
+        " {:<5} {:<15} {:<10} {:<12} {:<10} {:<10}",
+        "Key", "Name", "Type", "Rate/hr", "Color", "State"
     );
-    println!("{}", "─".repeat(55));
+    println!("{}", "─".repeat(65));
 
     for t in &trackers {
         let state_display = match t.state {
@@ -89,9 +113,10 @@ pub fn tracker_list(db: &Database) -> Result<()> {
             None => " - ".to_string(),
         };
         println!(
-            " {:<5} {:<15} {:<12} {:<10} {}",
+            " {:<5} {:<15} {:<10} {:<12} {:<10} {}",
             key_display,
             t.name,
+            t.tracker_type.to_string(),
             format_clp(t.hourly_rate),
             t.color,
             state_display,
@@ -100,6 +125,7 @@ pub fn tracker_list(db: &Database) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn tracker_edit(
     db: &Database,
     name: String,
@@ -108,11 +134,28 @@ pub fn tracker_edit(
     rate: Option<i64>,
     icon: Option<String>,
     shortcut: Option<i64>,
+    salary: Option<i64>,
+    weekly_hours: Option<i64>,
 ) -> Result<()> {
     let repo = TrackerRepo::new(db);
     let mut tracker = repo
         .find_by_name(&name)?
         .ok_or_else(|| AppError::NotFound(format!("Tracker '{name}'")))?;
+
+    // Cross-type validation
+    if rate.is_some() && tracker.tracker_type == TrackerType::Contract {
+        return Err(AppError::Validation(
+            "Cannot set --rate on a contract tracker. Edit --salary or --weekly-hours instead."
+                .into(),
+        ));
+    }
+    if (salary.is_some() || weekly_hours.is_some())
+        && tracker.tracker_type == TrackerType::Freelance
+    {
+        return Err(AppError::Validation(
+            "Cannot set --salary/--weekly-hours on a freelance tracker.".into(),
+        ));
+    }
 
     let name_changed = new_name.is_some();
     let shortcut_changed = shortcut.is_some();
@@ -128,7 +171,6 @@ pub fn tracker_edit(
     }
     if let Some(s) = shortcut {
         validate_shortcut(s)?;
-        // Check if shortcut is already taken by another tracker
         let all = repo.get_all()?;
         if let Some(other) = all.iter().find(|t| t.shortcut == Some(s) && t.id != tracker.id) {
             return Err(AppError::Validation(format!(
@@ -149,6 +191,22 @@ pub fn tracker_edit(
     }
     if let Some(s) = shortcut {
         tracker.shortcut = Some(s);
+    }
+
+    // Handle contract field edits with rate recalculation
+    if salary.is_some() || weekly_hours.is_some() {
+        if let Some(s) = salary {
+            validate_salary(s)?;
+            tracker.salary = Some(s);
+        }
+        if let Some(wh) = weekly_hours {
+            validate_weekly_hours(wh)?;
+            tracker.weekly_hours = Some(wh);
+        }
+        tracker.hourly_rate = calculate_contract_rate(
+            tracker.salary.unwrap(),
+            tracker.weekly_hours.unwrap(),
+        );
     }
 
     repo.update(&tracker)?;
@@ -289,6 +347,11 @@ pub fn status(db: &Database, date: Option<String>, name: Option<String>) -> Resu
         };
 
         println!("{} {}", symbol, name_display);
+        if tracker.tracker_type == TrackerType::Contract
+            && let (Some(sal), Some(wh)) = (tracker.salary, tracker.weekly_hours)
+        {
+            println!("  Contract:   {}/mo · {}h/wk", format_clp(sal), wh);
+        }
         if seconds > 0 {
             println!("  {time_label} {}", format_duration(seconds));
             println!("  Earned:     {}", format_clp(earnings));
@@ -310,47 +373,6 @@ pub fn status(db: &Database, date: Option<String>, name: Option<String>) -> Resu
 pub fn waybar(db: &Database) -> Result<()> {
     let result = output::generate(db)?;
     println!("{}", serde_json::to_string(&result).unwrap());
-    Ok(())
-}
-
-pub fn generate_eww_json(db: &Database) -> Result<String> {
-    let tracker_repo = TrackerRepo::new(db);
-    let session_repo = SessionRepo::new(db);
-    let trackers = tracker_repo.get_all()?;
-
-    let mut tracker_entries = Vec::new();
-    let mut total_seconds: i64 = 0;
-    let mut total_earnings_val: i64 = 0;
-
-    for tracker in &trackers {
-        let tracker_id = tracker.id.unwrap();
-        let seconds = session_repo.today_seconds(tracker_id)?;
-        let earnings = calculate_earnings(seconds, tracker.hourly_rate);
-        total_seconds += seconds;
-        total_earnings_val += earnings;
-
-        if seconds > 0 || tracker.state == TrackerState::Active {
-            tracker_entries.push(serde_json::json!({
-                "name": tracker.name,
-                "color": tracker.color,
-                "state": tracker.state.to_string().to_lowercase(),
-                "duration": format_duration(seconds),
-                "earnings": format_clp(earnings),
-            }));
-        }
-    }
-
-    let output = serde_json::json!({
-        "trackers": tracker_entries,
-        "total_duration": format_duration(total_seconds),
-        "total_earnings": format_clp(total_earnings_val),
-    });
-
-    Ok(serde_json::to_string(&output).unwrap())
-}
-
-pub fn eww(db: &Database) -> Result<()> {
-    println!("{}", generate_eww_json(db)?);
     Ok(())
 }
 
@@ -463,6 +485,26 @@ fn validate_rate(rate: i64) -> Result<()> {
     }
 }
 
+fn validate_salary(salary: i64) -> Result<()> {
+    if salary > 0 {
+        Ok(())
+    } else {
+        Err(AppError::Validation(
+            "Salary must be greater than zero.".into(),
+        ))
+    }
+}
+
+fn validate_weekly_hours(hours: i64) -> Result<()> {
+    if hours > 0 && hours <= 168 {
+        Ok(())
+    } else {
+        Err(AppError::Validation(format!(
+            "Weekly hours must be between 1 and 168, got {hours}."
+        )))
+    }
+}
+
 fn signal_waybar() {
     let _ = ProcessCommand::new("pkill")
         .args(["-RTMIN+11", "waybar"])
@@ -472,58 +514,6 @@ fn signal_waybar() {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn eww_output_with_active_tracker() {
-        let db = crate::db::connection::Database::in_memory().unwrap();
-        let tracker_repo = crate::db::tracker_repo::TrackerRepo::new(&db);
-
-        let id = tracker_repo
-            .create(&crate::domain::tracker::Tracker {
-                id: None,
-                name: "Work".to_string(),
-                color: "#55a555".to_string(),
-                icon_path: None,
-                hourly_rate: 15000,
-                state: crate::domain::tracker::TrackerState::Created,
-                created_at: "2026-04-01T10:00:00".to_string(),
-                shortcut: None,
-            })
-            .unwrap();
-        tracker_repo
-            .update_state(id, crate::domain::tracker::TrackerState::Active)
-            .unwrap();
-
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-        db.conn()
-            .execute(
-                "INSERT INTO sessions (tracker_id, started_at, ended_at) VALUES (?1, ?2, ?3)",
-                rusqlite::params![id, format!("{today}T10:00:00"), format!("{today}T11:00:00")],
-            )
-            .unwrap();
-
-        let json = generate_eww_json(&db).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(parsed["trackers"][0]["name"], "Work");
-        assert_eq!(parsed["trackers"][0]["color"], "#55a555");
-        assert_eq!(parsed["trackers"][0]["state"], "active");
-        assert_eq!(parsed["trackers"][0]["duration"], "1h 00m");
-        assert_eq!(parsed["trackers"][0]["earnings"], "$15.000");
-        assert_eq!(parsed["total_duration"], "1h 00m");
-        assert_eq!(parsed["total_earnings"], "$15.000");
-    }
-
-    #[test]
-    fn eww_output_empty_when_no_sessions() {
-        let db = crate::db::connection::Database::in_memory().unwrap();
-        let json = generate_eww_json(&db).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-
-        assert!(parsed["trackers"].as_array().unwrap().is_empty());
-        assert_eq!(parsed["total_duration"], "0m");
-        assert_eq!(parsed["total_earnings"], "$0");
-    }
 
     #[test]
     fn validate_date_valid_inputs() {

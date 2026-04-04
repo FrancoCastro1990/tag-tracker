@@ -7,6 +7,7 @@ Built for managing multiple jobs or projects where you need clear visibility int
 ## Features
 
 - **Multiple trackers** with custom name, color, and hourly rate
+- **Contract trackers** — define monthly salary and weekly hours, rate is calculated automatically
 - **One active at a time** — activating one automatically pauses the previous
 - **Waybar module** — shows active tracker with color and elapsed time in a pill badge
 - **Tooltip summary** — hover to see today's breakdown per tracker with earnings (pango markup, aligned columns)
@@ -39,17 +40,24 @@ cp target/release/tag-tracker ~/.local/bin/
 ### Managing trackers
 
 ```bash
-# Create trackers
+# Create freelance trackers (direct hourly rate)
 tag-tracker tracker add "Work A" --color "#55a555" --rate 15000
-tag-tracker tracker add "Work B" --color "#5555a5" --rate 20000
 tag-tracker tracker add "Side Project" --color "#a55555"
 
-# List all trackers (shows assigned shortcuts)
+# Create contract trackers (salary + weekly hours, rate auto-calculated)
+tag-tracker tracker add "Esencial" --color "#3388ff" --contract --salary 2500000 --weekly-hours 45
+# → Rate: $2.500.000 / (45 × 4.33) = $12.830/hr
+
+# List all trackers (shows type, assigned shortcuts)
 tag-tracker tracker list
 
-# Edit a tracker
+# Edit a freelance tracker
 tag-tracker tracker edit "Work A" --rate 18000
 tag-tracker tracker edit "Work A" --new-name "Company A" --color "#66b666"
+
+# Edit a contract tracker (rate recalculates automatically)
+tag-tracker tracker edit "Esencial" --salary 3000000
+tag-tracker tracker edit "Esencial" --weekly-hours 40
 
 # Change a tracker's keyboard shortcut (1-9)
 tag-tracker tracker edit "Work A" --shortcut 5
@@ -97,16 +105,21 @@ tag-tracker pause
 ```bash
 # Today's status (all trackers)
 $ tag-tracker status
-● Active: Work B
-  Time today: 2h 34m
-  Earned:     $51.333
+● Active: CobraYa
+  Contract:   $1.000.000/mo · 15h/wk
+  Time today: 1m
+  Earned:     $334
 
-◉ Paused: Work A
-  Time today: 1h 15m
-  Earned:     $22.500
+◉ Paused: Empresa B
+  Time today: 3h 52m
+  Earned:     $77.589
+
+◉ Paused: Esencial
+  Contract:   $2.500.000/mo · 45h/wk
+  Not started today
 
 ───────────────────────────────────
-Total today: 3h 49m | $73.833
+Total today: 3h 53m | $77.923
 
 # Report for a specific date (DD/MM/YYYY)
 $ tag-tracker status --date 01/04/2026
@@ -153,15 +166,23 @@ Add to `~/.config/waybar/config.jsonc`:
 Add to `~/.config/waybar/style.css`:
 
 ```css
+@keyframes border-pulse {
+    0%   { border-color: alpha(@foreground, 0.0); }
+    50%  { border-color: alpha(@foreground, 0.25); }
+    100% { border-color: alpha(@foreground, 0.0); }
+}
+
 #custom-tag-tracker {
     margin: 0 6px;
     padding: 0 10px;
     border-radius: 10px;
+    border: 2px solid transparent;
     transition: all 0.3s ease;
 }
 
 #custom-tag-tracker.active {
     background-color: rgba(255, 255, 255, 0.07);
+    animation: border-pulse 5s ease-in-out infinite;
 }
 
 #custom-tag-tracker.active:hover {

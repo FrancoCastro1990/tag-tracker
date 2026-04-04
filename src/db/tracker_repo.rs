@@ -1,5 +1,5 @@
 use crate::db::connection::Database;
-use crate::domain::tracker::{Tracker, TrackerState};
+use crate::domain::tracker::{Tracker, TrackerState, TrackerType};
 use crate::error::{AppError, Result};
 
 pub struct TrackerRepo<'a> {
@@ -13,7 +13,7 @@ impl<'a> TrackerRepo<'a> {
 
     pub fn create(&self, tracker: &Tracker) -> Result<i64> {
         self.db.conn().execute(
-            "INSERT INTO trackers (name, color, icon_path, hourly_rate, state, created_at, shortcut) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO trackers (name, color, icon_path, hourly_rate, state, created_at, shortcut, tracker_type, salary, weekly_hours) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
                 tracker.name,
                 tracker.color,
@@ -22,6 +22,9 @@ impl<'a> TrackerRepo<'a> {
                 tracker.state.to_string(),
                 tracker.created_at,
                 tracker.shortcut,
+                tracker.tracker_type.to_string(),
+                tracker.salary,
+                tracker.weekly_hours,
             ],
         )?;
         Ok(self.db.conn().last_insert_rowid())
@@ -32,7 +35,7 @@ impl<'a> TrackerRepo<'a> {
         self.db
             .conn()
             .query_row(
-                "SELECT id, name, color, icon_path, hourly_rate, state, created_at, shortcut FROM trackers WHERE id = ?1",
+                "SELECT id, name, color, icon_path, hourly_rate, state, created_at, shortcut, tracker_type, salary, weekly_hours FROM trackers WHERE id = ?1",
                 rusqlite::params![id],
                 row_to_tracker,
             )
@@ -46,7 +49,7 @@ impl<'a> TrackerRepo<'a> {
 
     pub fn get_all(&self) -> Result<Vec<Tracker>> {
         let mut stmt = self.db.conn().prepare(
-            "SELECT id, name, color, icon_path, hourly_rate, state, created_at, shortcut FROM trackers ORDER BY name",
+            "SELECT id, name, color, icon_path, hourly_rate, state, created_at, shortcut, tracker_type, salary, weekly_hours FROM trackers ORDER BY name",
         )?;
         let trackers = stmt
             .query_map([], row_to_tracker)?
@@ -56,7 +59,7 @@ impl<'a> TrackerRepo<'a> {
 
     pub fn find_by_name(&self, name: &str) -> Result<Option<Tracker>> {
         let result = self.db.conn().query_row(
-            "SELECT id, name, color, icon_path, hourly_rate, state, created_at, shortcut FROM trackers WHERE name = ?1",
+            "SELECT id, name, color, icon_path, hourly_rate, state, created_at, shortcut, tracker_type, salary, weekly_hours FROM trackers WHERE name = ?1",
             rusqlite::params![name],
             row_to_tracker,
         );
@@ -69,7 +72,7 @@ impl<'a> TrackerRepo<'a> {
 
     pub fn find_active(&self) -> Result<Option<Tracker>> {
         let result = self.db.conn().query_row(
-            "SELECT id, name, color, icon_path, hourly_rate, state, created_at, shortcut FROM trackers WHERE state = 'active'",
+            "SELECT id, name, color, icon_path, hourly_rate, state, created_at, shortcut, tracker_type, salary, weekly_hours FROM trackers WHERE state = 'active'",
             [],
             row_to_tracker,
         );
@@ -85,7 +88,7 @@ impl<'a> TrackerRepo<'a> {
             .id
             .ok_or_else(|| AppError::Validation("Cannot update a tracker without an id.".into()))?;
         let affected = self.db.conn().execute(
-            "UPDATE trackers SET name = ?1, color = ?2, icon_path = ?3, hourly_rate = ?4, state = ?5, shortcut = ?6 WHERE id = ?7",
+            "UPDATE trackers SET name = ?1, color = ?2, icon_path = ?3, hourly_rate = ?4, state = ?5, shortcut = ?6, tracker_type = ?7, salary = ?8, weekly_hours = ?9 WHERE id = ?10",
             rusqlite::params![
                 tracker.name,
                 tracker.color,
@@ -93,6 +96,9 @@ impl<'a> TrackerRepo<'a> {
                 tracker.hourly_rate,
                 tracker.state.to_string(),
                 tracker.shortcut,
+                tracker.tracker_type.to_string(),
+                tracker.salary,
+                tracker.weekly_hours,
                 id,
             ],
         )?;
@@ -146,6 +152,10 @@ fn row_to_tracker(row: &rusqlite::Row<'_>) -> rusqlite::Result<Tracker> {
     let state = state_str
         .parse::<TrackerState>()
         .map_err(|e| rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e))))?;
+    let type_str: String = row.get(8)?;
+    let tracker_type = type_str
+        .parse::<TrackerType>()
+        .map_err(|e| rusqlite::Error::FromSqlConversionFailure(8, rusqlite::types::Type::Text, Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e))))?;
     Ok(Tracker {
         id: row.get(0)?,
         name: row.get(1)?,
@@ -155,6 +165,9 @@ fn row_to_tracker(row: &rusqlite::Row<'_>) -> rusqlite::Result<Tracker> {
         state,
         created_at: row.get(6)?,
         shortcut: row.get(7)?,
+        tracker_type,
+        salary: row.get(9)?,
+        weekly_hours: row.get(10)?,
     })
 }
 
@@ -176,6 +189,9 @@ mod tests {
             state: TrackerState::Created,
             created_at: "2026-04-01T10:00:00".to_string(),
             shortcut: None,
+            tracker_type: TrackerType::Freelance,
+            salary: None,
+            weekly_hours: None,
         }
     }
 

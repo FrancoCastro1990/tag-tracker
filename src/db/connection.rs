@@ -45,14 +45,17 @@ impl Database {
         self.conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS trackers (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                name        TEXT    NOT NULL UNIQUE,
-                color       TEXT    NOT NULL,
-                icon_path   TEXT,
-                hourly_rate INTEGER NOT NULL,
-                state       TEXT    NOT NULL DEFAULT 'created',
-                created_at  TEXT    NOT NULL,
-                shortcut    INTEGER
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT    NOT NULL UNIQUE,
+                color        TEXT    NOT NULL,
+                icon_path    TEXT,
+                hourly_rate  INTEGER NOT NULL,
+                state        TEXT    NOT NULL DEFAULT 'created',
+                created_at   TEXT    NOT NULL,
+                shortcut     INTEGER,
+                tracker_type TEXT    NOT NULL DEFAULT 'freelance',
+                salary       INTEGER,
+                weekly_hours INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS sessions (
@@ -110,6 +113,23 @@ impl Database {
             }
 
             self.conn.execute_batch("PRAGMA user_version = 2;")?;
+        }
+
+        if version < 3 {
+            let has_tracker_type = self
+                .conn
+                .prepare("SELECT tracker_type FROM trackers LIMIT 0")
+                .is_ok();
+
+            if !has_tracker_type {
+                self.conn.execute_batch(
+                    "ALTER TABLE trackers ADD COLUMN tracker_type TEXT NOT NULL DEFAULT 'freelance';
+                     ALTER TABLE trackers ADD COLUMN salary INTEGER;
+                     ALTER TABLE trackers ADD COLUMN weekly_hours INTEGER;",
+                )?;
+            }
+
+            self.conn.execute_batch("PRAGMA user_version = 3;")?;
         }
 
         Ok(())

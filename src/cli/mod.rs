@@ -40,8 +40,6 @@ pub enum Command {
     Waybar,
     /// Open tracker picker menu (Walker)
     Menu,
-    /// Output JSON for EWW popup widget
-    Eww,
     /// Sync keyboard shortcuts with Hyprland
     SyncKeybindings,
 }
@@ -55,12 +53,21 @@ pub enum TrackerAction {
         /// Hex color (e.g. "#55a555")
         #[arg(long)]
         color: String,
-        /// Hourly rate in CLP (e.g. 15000, default: 0)
-        #[arg(long, default_value_t = 0)]
+        /// Hourly rate in CLP (e.g. 15000, default: 0, ignored when --contract is set)
+        #[arg(long, default_value_t = 0, conflicts_with = "contract")]
         rate: i64,
         /// Path to icon file (optional)
         #[arg(long)]
         icon: Option<PathBuf>,
+        /// Create as a contract tracker (requires --salary and --weekly-hours)
+        #[arg(long, requires_all = ["salary", "weekly_hours"])]
+        contract: bool,
+        /// Monthly salary in CLP (requires --contract)
+        #[arg(long, requires = "contract")]
+        salary: Option<i64>,
+        /// Weekly hours (requires --contract)
+        #[arg(long, requires = "contract")]
+        weekly_hours: Option<i64>,
     },
     /// List all trackers
     List,
@@ -74,7 +81,7 @@ pub enum TrackerAction {
         /// New hex color
         #[arg(long)]
         color: Option<String>,
-        /// New hourly rate in CLP
+        /// New hourly rate in CLP (only for freelance trackers)
         #[arg(long)]
         rate: Option<i64>,
         /// New icon path
@@ -83,6 +90,12 @@ pub enum TrackerAction {
         /// Keyboard shortcut number (1-9)
         #[arg(long)]
         shortcut: Option<i64>,
+        /// New monthly salary in CLP (only for contract trackers)
+        #[arg(long)]
+        salary: Option<i64>,
+        /// New weekly hours (only for contract trackers)
+        #[arg(long)]
+        weekly_hours: Option<i64>,
     },
     /// Delete a tracker and its sessions
     Delete {

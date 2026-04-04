@@ -50,12 +50,18 @@ fn run() -> error::Result<()> {
                 color,
                 rate,
                 icon,
+                contract,
+                salary,
+                weekly_hours,
             } => cli::commands::tracker_add(
                 &db,
                 name,
                 color,
                 rate,
                 icon.map(|p| p.to_string_lossy().to_string()),
+                contract,
+                salary,
+                weekly_hours,
             ),
             TrackerAction::List => cli::commands::tracker_list(&db),
             TrackerAction::Edit {
@@ -65,6 +71,8 @@ fn run() -> error::Result<()> {
                 rate,
                 icon,
                 shortcut,
+                salary,
+                weekly_hours,
             } => cli::commands::tracker_edit(
                 &db,
                 name,
@@ -73,6 +81,8 @@ fn run() -> error::Result<()> {
                 rate,
                 icon.map(|p| p.to_string_lossy().to_string()),
                 shortcut,
+                salary,
+                weekly_hours,
             ),
             TrackerAction::Delete { name } => cli::commands::tracker_delete(&db, name),
         },
@@ -81,7 +91,6 @@ fn run() -> error::Result<()> {
         Command::Status { date, name } => cli::commands::status(&db, date, name),
         Command::Waybar => cli::commands::waybar(&db),
         Command::Menu => cli::commands::menu(&db),
-        Command::Eww => cli::commands::eww(&db),
         Command::SyncKeybindings => cli::commands::sync_keybindings(&db),
     }
 }
